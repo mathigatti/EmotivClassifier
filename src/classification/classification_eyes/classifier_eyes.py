@@ -189,7 +189,7 @@ resting_data_open = {'beta':[], 'theta':[],'alpha':[]}
 target = []
 
 for band in ['beta','theta','alpha']:
-  rootPath = '../../../../informe/IMGs/Open/eyesOpen_'+band+'/'+metric+'/'
+  rootPath = '../../../informe/IMGs/Open/eyesOpen_'+band+'/'+metric+'/'
   for file in os.listdir(rootPath):
     if file[-4:] == '.csv':
       reader = csv.reader(open(rootPath + file, "rb"), delimiter=",")
