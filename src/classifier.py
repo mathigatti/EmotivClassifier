@@ -1,23 +1,29 @@
 # -*- coding: utf-8 -*-
 
-import numpy as np
+# Usage example
+# python classifier_sleep.py ../../output/spearman/theta/ ../../../Datasets/sonmolencia.csv Somnolencia -0.5
+
 from sklearn.model_selection import StratifiedKFold
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import roc_curve, auc
-import matplotlib.pyplot as plt
-import pickle
-import itertools
-
 from sklearn.feature_selection import RFE
 from sklearn.model_selection import cross_val_score
 from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import GaussianNB, BernoulliNB
 from sklearn.ensemble import VotingClassifier
-from scipy import stats
-import json
 
-# funcion para elegir el umbral que resulte en valores balanceados en la diagonal    
+from scipy.stats import zscore
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+
+import itertools
+import os
+import csv
+import sys
+
+# Funcion para elegir el umbral que resulte en valores balanceados en la diagonal    
 def get_optimal_thr_diagonal_cm(probs, target, step): 
     difference = np.zeros((len(np.arange(0,1,step))))
     n=-1
@@ -32,37 +38,8 @@ def get_optimal_thr_diagonal_cm(probs, target, step):
     loc = np.where( difference==min(difference))[0]
     return np.arange(0,1,step)[loc][0]
 
-def getTrainDataTarget(set1,set2):
 
-   # seleccionar fases de suenio que se van a comparar
-
-   target1 = np.zeros(set1.shape[0])
-   target2 = np.ones(set2.shape[0])
-
-
-   data = np.concatenate((set1,set2), axis=0)
-   target = np.concatenate((target1, target2), axis=0)
-
-   print target
-
-   return data, target
-
-def maxValues(values):
-  electrodes = ['AF3', 'F7', 'F3', 'FC5', 'T7', 'P7', 'O1', 'O2', 'P8', 'T8', 'FC6', 'F4', 'F8', 'AF4']
-
-  res = []
-  count = 0
-  for i in range(14):
-    for j in range(i):
-      res.append((i,j,values[count]))
-      count += 1
-
-  return map(lambda x: (electrodes[x[0]],electrodes[x[1]],x[-1]),sorted(res,key=lambda x:-x[-1]))
-
-def plot_confusion_matrix(cm, classes,
-                          normalize=False,
-                          title='Confusion matrix',
-                          cmap=plt.cm.Blues):
+def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix', cmap=plt.cm.Blues):
     """
     This function prints and plots the confusion matrix.
     Normalization can be applied by setting `normalize=True`.
@@ -92,9 +69,22 @@ def plot_confusion_matrix(cm, classes,
     plt.ylabel('True label')
     plt.xlabel('Predicted label')
     plt.tight_layout()
-    plt.savefig('eyes_' + title.lower().replace(" ","_") + ".png")
+    plt.savefig('sleep_' + title.lower().replace(" ","_") + ".png")
 
-# funcion para expandir las matrices en una lista y tomar la parte triangular superior    
+
+def maxValues(values):
+  electrodes = ['AF3', 'F7', 'F3', 'FC5', 'T7', 'P7', 'O1', 'O2', 'P8', 'T8', 'FC6', 'F4', 'F8', 'AF4']
+
+  res = []
+  count = 0
+  for i in range(14):
+    for j in range(i):
+      res.append((i,j,values[count]))
+      count += 1
+
+  return map(lambda x: (electrodes[x[0]],electrodes[x[1]],x[-1]),sorted(res,key=lambda x:-x[-1]))
+
+# Funcion para expandir las matrices en una lista y tomar la parte triangular superior    
 def unfold_data(data_list): 
     output = np.zeros((len(data_list), len(data_list[0][np.tril_indices(data_list[0].shape[0],-1)])))
     for i,matrix in enumerate(data_list):
@@ -110,19 +100,16 @@ def matrixPlot(matrix, name):
     plt.clf() # clean buffer
 
 def getClassifiers():
-   n_estimators = 16   # cantidad de arboles
+   n_estimators = 16 # cantidad de arboles
    max_depth = 4 # maxima profundidad de los arboles
 
    clf1 = LogisticRegression()
    clf2 = BernoulliNB()
+   #clf2 = GaussianNB()
    clf3 = RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth)
-#   clf2 = GaussianNB()
-#   clf3 = GaussianNB()
    return clf1, clf2, clf3
 
 def fitModelwithCrossValidation(data, target, name,cvs):
-   print name  
-
    clf1, clf2, clf3 = getClassifiers()
 
    cv_target = np.array([])
@@ -132,7 +119,6 @@ def fitModelwithCrossValidation(data, target, name,cvs):
    importantes = []
    for cv in cvs:
      for train, test in cv.split(data, target):
-
          X_train = data[train] # crear sets de entrenamiento y testeo para el fold
          X_test = data[test]
          y_train = target[train]
@@ -142,9 +128,8 @@ def fitModelwithCrossValidation(data, target, name,cvs):
          clf2 = clf2.fit(X_train,y_train)
          clf3 = clf3.fit(X_train,y_train)
          clf = VotingClassifier(estimators=[('lr', clf1), ('rf', clf2), ('gnb', clf3)], voting='soft')
-#         clf = clf.fit(X_train,y_train)
          rfe = RFE(clf1, 5)
-#         clf = clf3.fit(X_train,y_train)
+#         clf = clf2.fit(X_train,y_train)
 
          clf = rfe.fit(X_train,y_train)
 
@@ -161,7 +146,8 @@ def fitModelwithCrossValidation(data, target, name,cvs):
          cv_prediction = np.concatenate((cv_prediction, preds), axis=0)
          cv_probas = np.concatenate((cv_probas, probas[:,1]), axis=0)
 
-   print maxValues(np.mean(importantes,axis=0))
+   print(maxValues(np.mean(importantes,axis=0)))
+
    preds_thr = np.zeros(len(cv_target))
    thr_final = get_optimal_thr_diagonal_cm(cv_probas, cv_target, 0.01)
    preds_thr[np.where(cv_probas>thr_final)[0]] = 1
@@ -175,101 +161,58 @@ def fitModelwithCrossValidation(data, target, name,cvs):
 
 # cargar matrices de correlacion
 
-import os
-import csv
-import numpy
-import sys
+# SUENIO (Cantidad de horas de suenio normalizadas)
+rootPathCorrelationsMatrix = sys.argv[1]
+targetPath = sys.argv[2]
+columnName = sys.argv[3]
+threshold = float(sys.argv[4])
 
-if len(sys.argv) > 1:
-  metric = sys.argv[1]
-else:
-  metric = "correlation"
+targetDF = pd.read_csv(targetPath)
+targetDF = targetDF.dropna(axis=0)
+targetDF[columnName] = targetDF[[columnName]].apply(zscore)
 
-resting_data_open = {'beta':[], 'theta':[],'alpha':[]}
+resting_data = []
 target = []
 
 for band in ['beta','theta','alpha']:
-  rootPath = '../DatosProcesados/Open/eyesOpen_'+band+'/'+metric+'/'
-  for file in os.listdir(rootPath):
-    if file[-4:] == '.csv':
-      reader = csv.reader(open(rootPath + file, "rb"), delimiter=",")
+  for file in os.listdir(rootPathCorrelationsMatrix):
+    if file[-4:] == '.csv' and targetDF['NCaso'].str.contains(file[:5]).any():
+      reader = csv.reader(open(rootPathCorrelationsMatrix + file, "rb"), delimiter=",")
       x = list(reader)
-      x = numpy.array(x).astype("float")
+      x = np.array(x).astype("float")
 
-      resting_data_open[band].append(x)
+      resting_data.append(x)
+      target.append(any(targetDF[targetDF['NCaso'] == file[:5]][columnName] < threshold))
 
-resting_data_closed = {'beta':[], 'theta':[],'alpha':[]}
-target = []
+target = np.array(target)
+resting_data = np.array(resting_data)
 
-for band in ['beta','theta','alpha']:
-  rootPath = '../DatosProcesados/Closed/eyesClosed_'+band+'/'+metric+'/'
-  for file in os.listdir(rootPath):
-    if file[-4:] == '.csv':
-      reader = csv.reader(open(rootPath + file, "rb"), delimiter=",")
-      x = list(reader)
-      x = numpy.array(x).astype("float")
-
-      resting_data_closed[band].append(x)
-
-res = []
 lines = []
 cms = []
 
-# Usamos cross validation para validar que el voting classifier funciona ok utilizando los datos de entrenamiento
-set1 = np.concatenate((unfold_data(resting_data_open['theta']), unfold_data(resting_data_open['beta']), unfold_data(resting_data_open['alpha'])), axis=1)
-set2 = np.concatenate((unfold_data(resting_data_closed['theta']), unfold_data(resting_data_closed['beta']), unfold_data(resting_data_closed['alpha'])), axis=1)
-data, target = getTrainDataTarget(set1,set2)
-
-n_folds = 6   # cantidad de folds
+n_folds = 6 # cantidad de folds
 cvs = [StratifiedKFold(n_splits=n_folds) for _ in range(10)] # crear objeto de cross validation estratificada
 
-auc_value, line,cm = fitModelwithCrossValidation(data, target, u'α+θ+β',cvs)
-lines.append(line)
-cms.append(cm)
-res.append(metric+"\t"+'allBands' +"\t"+str(auc_value))
-
-set1 = unfold_data(resting_data_open['alpha'])
-set2 = unfold_data(resting_data_closed['alpha'])
-data, target = getTrainDataTarget(set1,set2)
-
+data = unfold_data(resting_data)
 auc_value, line,cm = fitModelwithCrossValidation(data, target, u'α',cvs)
 lines.append(line)
 cms.append(cm)
-res.append(metric+"\t"+'alpha' +"\t"+str(auc_value))
 
-set1 = unfold_data(resting_data_open['theta'])
-set2 = unfold_data(resting_data_closed['theta'])
-data, target = getTrainDataTarget(set1,set2)
-
-auc_value, line, cm = fitModelwithCrossValidation(data, target, u'θ',cvs)
-lines.append(line)
-cms.append(cm)
-res.append(metric+"\t"+'theta' +"\t"+str(auc_value))
-
-set1 = unfold_data(resting_data_open['beta'])
-set2 = unfold_data(resting_data_closed['beta'])
-data, target = getTrainDataTarget(set1,set2)
-
-auc_value,line,cm = fitModelwithCrossValidation(data, target, u'β',cvs)
-lines.append(line)
-cms.append(cm)
-res.append(metric+"\t"+'beta' +"\t"+str(auc_value))
+print('auc_value' +"\t"+str(auc_value))
 
 x = [0.0, 1.0]
 random, = plt.plot(x, x, linestyle='dashed', color='red', linewidth=2, label='random (AUC = 0.5)')
 lines.append(random)
 
 plt.legend(handles=lines)
-plt.title("Clasificador de Ojos Abiertos/Cerrados: Curva ROC")
+plt.title(u"Clasificador de Cantidad de Sueño: Curva ROC")
 plt.xlabel('False Positive Rate')
 plt.ylabel('True Positive Rate')
-plt.savefig("eyes_roc.png")
+plt.savefig("sleep_roc.png")
 
 plt.clf()
 
 casos = [u'α+θ+β',u'α',u'θ',u'β']
 for i in range(len(cms)):
-   plot_confusion_matrix(cms[i], ["Ojos Abiertos","Ojos Cerrados"],title=casos[i]+' Matriz de Confusion')
+   plot_confusion_matrix(cms[i], [u"Sueño Insuficiente",u"Sueño Normal"],title=casos[i]+' Matriz de Confusion')
    plt.clf()
-
-print res

@@ -1,10 +1,11 @@
 
-from constants import *
-from scipy import stats
+from scipy import signal, stats
 import numpy as np
+from functools import partial
 from mne.connectivity import spectral_connectivity
 import mne
 import math
+
 from scipy.signal import butter, lfilter
 
 def butter_bandpass(lowcut, highcut, fs, order=5):
@@ -14,15 +15,37 @@ def butter_bandpass(lowcut, highcut, fs, order=5):
     b, a = butter(order, [low, high], btype='band')
     return b, a
 
-
 def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
     b, a = butter_bandpass(lowcut, highcut, fs, order=order)
     y = lfilter(b, a, data)
     return y
 
-# Metricas
+# Helpers
 
-class Metrica:
+# From 4Hz to 7.5Hz
+def theta(frequenciesList):
+	result = 0
+	for i in range(8,16):
+		result += frequenciesList[i]
+	return result
+
+# From 8Hz to 14Hz
+def alpha(frequenciesList):
+	result = 0
+	for i in range(16,29):
+		result += frequenciesList[i]
+	return result
+
+# From 15Hz to 25Hz
+def beta(frequenciesList):
+	result = 0
+	for i in range(29,49):
+		result += frequenciesList[i]
+	return result
+
+# Metrics
+
+class Metric:
     def __init__(self, implementation, name):
         self.apply = implementation
         self.name = name
@@ -32,14 +55,14 @@ def correlationFunction(signal_1, signal_2,fmin,fmax):
 	signal_2 = butter_bandpass_filter(signal_2, fmin, fmax, 128, order=5)
 	return stats.pearsonr(signal_1,signal_2)[0]
 
-correlation = Metrica(correlationFunction, "correlation")
+correlation = Metric(correlationFunction, "correlation")
 
 def spearmanFunction(signal_1, signal_2,fmin,fmax):
 	signal_1 = butter_bandpass_filter(signal_1, fmin, fmax, 128, order=5)
 	signal_2 = butter_bandpass_filter(signal_2, fmin, fmax, 128, order=5)
 	return stats.spearmanr(signal_1,signal_2)[0]
 
-spearman = Metrica(spearmanFunction, "spearman")
+spearman = Metric(spearmanFunction, "spearman")
 
 def h(raw_EEG_data, method,fmin,fmax):
 	sfreq = raw_EEG_data.info['sfreq']  # the sampling frequency
@@ -67,8 +90,6 @@ def h(raw_EEG_data, method,fmin,fmax):
 	    faverage=True, tmin=tmin, mt_adaptive=False, n_jobs=1)
 
 	ch_names = epochs.ch_names
-	print("IMPRIMO CHANNEL NAMES de EPOCHS")
-	print(ch_names)
 
 	con = con[0:14]
 	matrix = []
@@ -79,8 +100,25 @@ def h(raw_EEG_data, method,fmin,fmax):
 		matrix.append(sublista)
 	return np.array(matrix)
 
-comodin = lambda name : Metrica(lambda raw_EEG_data,fmin,fmax: h(raw_EEG_data,name,fmin,fmax), name)
+def pliFunction(raw_EEG_data,fmin,fmax):
+	return h(raw_EEG_data,'coh',fmin,fmax)
+
+pli = Metric(pliFunction, "pli")
+
+def plvFunction(raw_EEG_data,fmin,fmax):
+	return h(raw_EEG_data,'plv',fmin,fmax)
+	
+plv = Metric(plvFunction, "plv")
+
+def cohFunction(raw_EEG_data,fmin,fmax):
+	return h(raw_EEG_data,'coh',fmin,fmax)
+
+coh = Metric(cohFunction, "coh")
+
+def plvFunction(raw_EEG_data,fmin,fmax):
+	return h(raw_EEG_data,'plv',fmin,fmax)
+
+comodin = lambda name : Metric(lambda raw_EEG_data,fmin,fmax: h(raw_EEG_data,name,fmin,fmax), name)
 
 # Variables globales
-
-metricasDict = {spearman.name: spearman, correlation.name:correlation}
+metricsDict = {spearman.name: spearman, correlation.name:correlation, coh.name:coh, plv.name:plv, pli.name:pli}
