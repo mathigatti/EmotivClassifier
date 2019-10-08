@@ -197,3 +197,6 @@ def run_experiment()
   for i in range(len(cms)):
      plot_confusion_matrix(cms[i], [f"{columnName} Insuficiente",f"{columnName} Normal"],title=titles[i]+' Matriz de Confusion')
      plt.clf()
+
+    
+run_experiment()
