@@ -1,6 +1,6 @@
 # EmotivClassifier
 
-This are a few scripts to generate correlation matrices and then use them to train classifiers in order to predict different individual characteristics based on the brain connectivity. These are part of my computer science thesis project.
+These are a few scripts used to generate correlation matrices and training machine learning classifiers in order to predict different individual characteristics based on the brain connectivity. These are part of my computer science thesis project.
 
 ## Requirements
 
@@ -12,7 +12,6 @@ This are a few scripts to generate correlation matrices and then use them to tra
   - mne
 
 ## Usage
-It is used running the main script `midi2voice.py`, it has four parameters, the lyrics_file, midi_file, singer sex (optional) and tempo (optional).
 
 ### Generating Correlation Matrices
 
