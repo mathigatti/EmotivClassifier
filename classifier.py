@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
 
-# Usage example
-# python classifier_sleep.py ../../output/spearman/theta/ ../../../Datasets/sonmolencia.csv Somnolencia -0.5
-
 from sklearn.model_selection import StratifiedKFold
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import confusion_matrix
@@ -23,7 +20,7 @@ import os
 import csv
 import sys
 
-# Funcion para elegir el umbral que resulte en valores balanceados en la diagonal    
+# Función para elegir el umbral que resulte en valores balanceados en la diagonal
 def get_optimal_thr_diagonal_cm(probs, target, step): 
     difference = np.zeros((len(np.arange(0,1,step))))
     n=-1
@@ -37,7 +34,6 @@ def get_optimal_thr_diagonal_cm(probs, target, step):
         difference[n] = abs(cm[0,0] - cm[1,1])
     loc = np.where( difference==min(difference))[0]
     return np.arange(0,1,step)[loc][0]
-
 
 def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix', cmap=plt.cm.Blues):
     """
@@ -71,7 +67,6 @@ def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix'
     plt.tight_layout()
     plt.savefig('sleep_' + title.lower().replace(" ","_") + ".png")
 
-
 def maxValues(values):
   electrodes = ['AF3', 'F7', 'F3', 'FC5', 'T7', 'P7', 'O1', 'O2', 'P8', 'T8', 'FC6', 'F4', 'F8', 'AF4']
 
@@ -99,24 +94,16 @@ def matrixPlot(matrix, name):
     plt.savefig('matrix_' + name + '.png') # guardar graficos en .png
     plt.clf() # clean buffer
 
-def getClassifiers():
+def fitModelwithCrossValidation(data, target, name,cvs):
    n_estimators = 16 # cantidad de arboles
    max_depth = 4 # maxima profundidad de los arboles
-
-   clf1 = LogisticRegression()
-   clf2 = BernoulliNB()
-   #clf2 = GaussianNB()
-   clf3 = RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth)
-   return clf1, clf2, clf3
-
-def fitModelwithCrossValidation(data, target, name,cvs):
-   clf1, clf2, clf3 = getClassifiers()
+   clf = RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth)
 
    cv_target = np.array([])
    cv_prediction = np.array([])
    cv_probas = np.array([])
 
-   importantes = []
+   main_attributes = []
    for cv in cvs:
      for train, test in cv.split(data, target):
          X_train = data[train] # crear sets de entrenamiento y testeo para el fold
@@ -124,20 +111,11 @@ def fitModelwithCrossValidation(data, target, name,cvs):
          y_train = target[train]
          y_test = target[test]
 
-         clf1 = clf1.fit(X_train,y_train)
-         clf2 = clf2.fit(X_train,y_train)
-         clf3 = clf3.fit(X_train,y_train)
-         clf = VotingClassifier(estimators=[('lr', clf1), ('rf', clf2), ('gnb', clf3)], voting='soft')
-         rfe = RFE(clf1, 5)
-#         clf = clf2.fit(X_train,y_train)
+         rfe = RFE(clf, 5)
 
          clf = rfe.fit(X_train,y_train)
 
-#         print("Selected Features: %s") % clf.support_
-#         print("Feature Ranking: %s") % clf.ranking_
-
-         importantes.append(map(lambda x: float(x), clf.support_))
-#         importantes.append(clf.feature_importances_)
+         main_attributes.append(map(lambda x: float(x), clf.support_))
 
          preds = clf.predict(X_test)
          probas = clf.predict_proba(X_test)
@@ -146,7 +124,7 @@ def fitModelwithCrossValidation(data, target, name,cvs):
          cv_prediction = np.concatenate((cv_prediction, preds), axis=0)
          cv_probas = np.concatenate((cv_probas, probas[:,1]), axis=0)
 
-   print(maxValues(np.mean(importantes,axis=0)))
+   print(maxValues(np.mean(main_attributes,axis=0)))
 
    preds_thr = np.zeros(len(cv_target))
    thr_final = get_optimal_thr_diagonal_cm(cv_probas, cv_target, 0.01)
@@ -159,60 +137,63 @@ def fitModelwithCrossValidation(data, target, name,cvs):
    line, = plt.plot(fpr,tpr,label=name + " (AUC = " + str(round(auc(fpr,tpr),2)) + ")") # plotear curva ROC
    return auc(fpr,tpr), line, cm
 
-# cargar matrices de correlacion
+def loadCorrelationMatrices():
+  rootPathCorrelationsMatrix = sys.argv[1]
+  targetPath = sys.argv[2]
+  columnName = sys.argv[3]
+  threshold = float(sys.argv[4])
 
-# SUENIO (Cantidad de horas de suenio normalizadas)
-rootPathCorrelationsMatrix = sys.argv[1]
-targetPath = sys.argv[2]
-columnName = sys.argv[3]
-threshold = float(sys.argv[4])
+  targetDF = pd.read_csv(targetPath)
+  targetDF = targetDF.dropna(axis=0)
+  targetDF[columnName] = targetDF[[columnName]].apply(zscore)
 
-targetDF = pd.read_csv(targetPath)
-targetDF = targetDF.dropna(axis=0)
-targetDF[columnName] = targetDF[[columnName]].apply(zscore)
+  data = []
+  target = []
 
-resting_data = []
-target = []
+  for band in ['beta','theta','alpha']:
+    for file in os.listdir(rootPathCorrelationsMatrix):
+      if file[-4:] == '.csv' and targetDF['NCaso'].str.contains(file[:5]).any():
+        reader = csv.reader(open(rootPathCorrelationsMatrix + file, "rb"), delimiter=",")
+        x = list(reader)
+        x = np.array(x).astype("float")
 
-for band in ['beta','theta','alpha']:
-  for file in os.listdir(rootPathCorrelationsMatrix):
-    if file[-4:] == '.csv' and targetDF['NCaso'].str.contains(file[:5]).any():
-      reader = csv.reader(open(rootPathCorrelationsMatrix + file, "rb"), delimiter=",")
-      x = list(reader)
-      x = np.array(x).astype("float")
+        data.append(x)
+        target.append(any(targetDF[targetDF['NCaso'] == file[:5]][columnName] < threshold))
 
-      resting_data.append(x)
-      target.append(any(targetDF[targetDF['NCaso'] == file[:5]][columnName] < threshold))
+  target = np.array(target)
+  data = np.array(data)
 
-target = np.array(target)
-resting_data = np.array(resting_data)
+  data = unfold_data(data)
+  return data, target
 
-lines = []
-cms = []
+def run_experiment()
+  data, target = loadCorrelationMatrices()
 
-n_folds = 6 # cantidad de folds
-cvs = [StratifiedKFold(n_splits=n_folds) for _ in range(10)] # crear objeto de cross validation estratificada
+  n_folds = 6 # cantidad de folds
+  cvs = [StratifiedKFold(n_splits=n_folds) for _ in range(10)] # crear objeto de cross validation estratificada
 
-data = unfold_data(resting_data)
-auc_value, line,cm = fitModelwithCrossValidation(data, target, u'α',cvs)
-lines.append(line)
-cms.append(cm)
+  lines = []
+  cms = []
 
-print('auc_value' +"\t"+str(auc_value))
+  auc_value, line,cm = fitModelwithCrossValidation(data, target, u'α',cvs)
+  lines.append(line)
+  cms.append(cm)
 
-x = [0.0, 1.0]
-random, = plt.plot(x, x, linestyle='dashed', color='red', linewidth=2, label='random (AUC = 0.5)')
-lines.append(random)
+  print('auc_value' +"\t"+str(auc_value))
 
-plt.legend(handles=lines)
-plt.title(u"Clasificador de Cantidad de Sueño: Curva ROC")
-plt.xlabel('False Positive Rate')
-plt.ylabel('True Positive Rate')
-plt.savefig("sleep_roc.png")
+  x = [0.0, 1.0]
+  random, = plt.plot(x, x, linestyle='dashed', color='red', linewidth=2, label='random (AUC = 0.5)')
+  lines.append(random)
 
-plt.clf()
+  plt.legend(handles=lines)
+  plt.title(f"Clasificador de {columnName}: Curva ROC")
+  plt.xlabel('False Positive Rate')
+  plt.ylabel('True Positive Rate')
+  plt.savefig("roc.png")
 
-casos = [u'α+θ+β',u'α',u'θ',u'β']
-for i in range(len(cms)):
-   plot_confusion_matrix(cms[i], [u"Sueño Insuficiente",u"Sueño Normal"],title=casos[i]+' Matriz de Confusion')
-   plt.clf()
+  plt.clf()
+
+  titles = [u'α+θ+β',u'α',u'θ',u'β']
+  for i in range(len(cms)):
+     plot_confusion_matrix(cms[i], [f"{columnName} Insuficiente",f"{columnName} Normal"],title=titles[i]+' Matriz de Confusion')
+     plt.clf()
