@@ -1,4 +1,4 @@
-# EmotivClassifier
+# Emotiv Classifier
 
 These are a few scripts used to generate correlation matrices and training machine learning classifiers in order to predict different individual characteristics based on the brain connectivity. These are part of my computer science thesis project.
 
@@ -13,7 +13,7 @@ These are a few scripts used to generate correlation matrices and training machi
 
 ## Usage
 
-### Generating Correlation Matrices
+### Generating correlation matrices
 
 In order to generate correlation matrices you need raw data from an EEG, in this case the scripts are prepared for EEGLab data format ( .set files ) with 14 time series (electrodes).
 
@@ -23,7 +23,7 @@ The script is run like this:
 python correlationMatrixGenerator.py metric path_to_raw_eeg_data destination_path
 ```
 
-### Generating Correlation Matrices
+### Training classifiers and testing them
 
 On classifier.py you can find a script to train a random forest classifier using correlation matrices as input in order to predict some variable from a CSV file.
 
